@@ -137,13 +137,11 @@ author: Cove Schneider
 '''
 
 try:
-
     import sys
     import json
     import docker.client
     from requests.exceptions import *
     from urlparse import urlparse
-
 except ImportError, e:
     print "failed=True msg='failed to import python module: %s'" % e
     sys.exit(1)
@@ -173,7 +171,6 @@ class AnsibleDocker:
     counters = {'created':0, 'started':0, 'stopped':0, 'killed':0, 'removed':0, 'restarted':0, 'pull':0}
 
     def __init__(self, module):
-
         self.module = module
     
         # connect to docker server
@@ -181,7 +178,6 @@ class AnsibleDocker:
         self.client = docker.Client(base_url=docker_url.geturl())
     
     def get_summary_counters_msg(self):
-
         msg = ""
         for k, v in self.counters.iteritems():
             msg = msg + "%s %d " % (k, v)
@@ -189,11 +185,9 @@ class AnsibleDocker:
         return msg
     
     def increment_counter(self, name):
-
         self.counters[name] = self.counters[name] + 1
 
     def has_changed(self):
-
         for k, v in self.counters.iteritems():
             if v > 0:
                 return True
@@ -201,7 +195,6 @@ class AnsibleDocker:
         return False
 
     def get_deployed_containers(self):
-
         # determine which images/commands are running already
         containers = self.client.containers()
         image      = self.module.params.get('image')
@@ -220,7 +213,6 @@ class AnsibleDocker:
         return deployed
 
     def get_running_containers(self):
-
         running = []
         for i in self.get_deployed_containers():
             if i['State']['Running'] == True:
@@ -229,7 +221,6 @@ class AnsibleDocker:
         return running
 
     def create_containers(self, count=1):
-
         params = {'image':        self.module.params.get('image'),
                   'command':      self.module.params.get('command'),
                   'volumes_from': self.module.params.get('volumes_from'),
@@ -255,7 +246,6 @@ class AnsibleDocker:
 
         try:
             containers = do_create(count, params)
-
         except:
             self.client.pull(params['image'])
             self.increment_counter('pull')
@@ -264,7 +254,6 @@ class AnsibleDocker:
         return containers
 
     def start_containers(self, containers):
-
         binds = None
         if self.module.params.get('volumes'):
             binds = {}
@@ -286,7 +275,6 @@ class AnsibleDocker:
                 self.increment_counter('started')
 
     def stop_containers(self, containers):
-
         for i in containers:
             self.client.stop(i['Id'])
             self.increment_counter('stopped')
@@ -294,19 +282,16 @@ class AnsibleDocker:
         return [self.client.wait(i['Id']) for i in containers]
 
     def remove_containers(self, containers):
-
         for i in containers:
             self.client.remove_container(i['Id'])
             self.increment_counter('removed')
     
     def kill_containers(self, containers):
-
         for i in containers:
             self.client.kill(i['Id'])
             self.increment_counter('killed')
 
     def restart_containers(self, containers):
-
         for i in containers:
             self.client.restart(i['Id'])
             self.increment_counter('restarted')
@@ -338,11 +323,10 @@ def main():
     )
 
     try:
-
         docker_client = AnsibleDocker(module)
         state = module.params.get('state')
         count = int(module.params.get('count'))
-    
+
         if count < 1:
             module.fail_json(msg="Count must be positive number")
     
@@ -354,7 +338,7 @@ def main():
         failed = False
         changed = False
 
-        # start/stop images
+        # start/stop containers
         if state == "present":
     
             # start more containers if we don't have enough
@@ -399,8 +383,7 @@ def main():
     except RequestException as e:
         changed = docker_client.has_changed()
         module.exit_json(failed=True, changed=changed, msg=repr(e))
-
-
+        
 # this is magic, see lib/ansible/module_common.py
 #<<INCLUDE_ANSIBLE_MODULE_COMMON>>
 
