@@ -149,13 +149,6 @@ Parameters
 <td>Enable detached mode on start up, leaves container running in background</td>
 </tr>
 <tr>
-<td>memory_swap</td>
-<td>no</td>
-<td></td>
-<td><ul></ul></td>
-<td>Set virtual memory swap space allocated to container</td>
-</tr>
-<tr>
 <td>count</td>
 <td>no</td>
 <td>1</td>
@@ -194,7 +187,7 @@ Parameters
 <td>state</td>
 <td>no</td>
 <td>present</td>
-<td><ul><li>present</li><li>stop</li><li>absent</li><li>kill</li><li>restart</li></ul></td>
+<td><ul><li>present</li><li>stopped</li><li>absent</li><li>killed</li><li>restarted</li></ul></td>
 <td>Set the state of the container</td>
 </tr>
 <tr>
