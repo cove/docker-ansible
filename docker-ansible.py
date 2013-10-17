@@ -414,7 +414,7 @@ def main():
         # stop and remove containers
         elif state == "absent":
             facts = manager.stop_containers(deployed_containers)
-            manager.remove_containers(containers)
+            manager.remove_containers(deployed_containers)
     
         # stop containers
         elif state == "stopped":
