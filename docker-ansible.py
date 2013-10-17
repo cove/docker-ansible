@@ -27,7 +27,7 @@ DOCUMENTATION = '''
 module: docker
 short_description: manage docker containers
 description:
-     - Manage the life cycle of docker containers. This module has a dependency on the docker-py python module.
+     - Manage the life cycle of docker containers.
 options:
   count:
     description:
@@ -134,11 +134,58 @@ options:
     default:
     aliases: []
 author: Cove Schneider
+requirements: [ "docker-py" ]
+'''
+
+EXAMPLES = '''
+Start one docker container running tomcat in each host of the web group and bind tomcat's listening port to 8080
+on the host:
+
+- hosts: web
+  sudo: yes
+  tasks:
+  - name: run tomcat servers
+    docker: image=centos command="service tomcat6 start" ports=:8080
+
+The tomcat server's port is NAT'ed to a dynamic port on the host, but you can determine which port the server was
+mapped to using docker_containers:
+
+- hosts: web
+  sudo: yes
+  tasks:
+  - name: run tomcat servers
+    docker: image=centos command="service tomcat6 start" ports=8080 count=5
+  - name: Display IP address and port mappings for containers
+    debug: msg="Mapped to {{inventory_hostname}}:{{item.NetworkSettings.PortMapping.Tcp['8080']}}"
+    with_items: docker_containers
+
+Just as in the previous example, but iterates over the list of docker containers with a sequence:
+
+- hosts: web
+  sudo: yes
+  vars:
+    start_containers_count: 5
+  tasks:
+  - name: run tomcat servers
+    docker: image=centos command="service tomcat6 start" ports=8080 count={{start_containers_count}}
+  - name: Display IP address and port mappings for containers
+    debug: msg="Mapped to {{inventory_hostname}}:{{docker_containers[{{item}}].NetworkSettings.PortMapping.Tcp['8080']}}"
+    with_sequence: start=0 end={{start_containers_count - 1}}
+
+Stop, remove all of the running tomcat containers and list the exit code from the stopped containers:
+
+- hosts: web
+  sudo: yes
+  tasks:
+  - name: stop tomcat servers
+    docker: image=centos command="service tomcat6 start" state=absent
+  - name: Display return codes from stopped containers
+    debug: msg="Returned {{inventory_hostname}}:{{item}}"
+    with_items: docker_containers
 '''
 
 try:
     import sys
-    import json
     import docker.client
     from requests.exceptions import *
     from urlparse import urlparse
@@ -164,15 +211,43 @@ def _human_to_bytes(number):
     sys.exit(1)
 
 def _ansible_facts(container_list):
-    return {"DockerContainers": container_list}
+    return {"docker_containers": container_list}
 
-class AnsibleDocker:
+class DockerManager:
     
     counters = {'created':0, 'started':0, 'stopped':0, 'killed':0, 'removed':0, 'restarted':0, 'pull':0}
 
     def __init__(self, module):
         self.module = module
     
+        self.binds = None
+        self.volumes = None
+        if self.module.params.get('volumes'):
+            self.binds = {}
+            self.volumes = {}
+            vols = self.module.params.get('volumes').split(" ")
+            for vol in vols:
+                parts = vol.split(":")
+                # host mount (e.g. /mnt:/tmp, bind mounts host's /tmp to /mnt in the container)
+                if len(parts) == 2:
+                    self.volumes[parts[1]] = {}
+                    self.binds[parts[0]] = parts[1]
+                # docker mount (e.g. /www, mounts a docker volume /www on the container at the same location)
+                else:
+                    self.volumes[parts[0]] = {}
+
+        self.lxc_conf = None
+        if self.module.params.get('lxc_conf'):
+            self.lxc_conf = []
+            options = self.module.params.get('lxc_conf').split(" ")
+            for option in options:
+                parts = option.split(':')
+                self.lxc_conf.append({"Key": parts[0], "Value": parts[1]})
+
+        self.ports = None
+        if self.module.params.get('ports'):
+            self.ports = self.module.params.get('ports').split(",")
+
         # connect to docker server
         docker_url = urlparse(module.params.get('docker_url'))
         self.client = docker.Client(base_url=docker_url.geturl())
@@ -223,6 +298,8 @@ class AnsibleDocker:
     def create_containers(self, count=1):
         params = {'image':        self.module.params.get('image'),
                   'command':      self.module.params.get('command'),
+                  'ports':        self.ports,
+                  'volumes':      self.volumes,
                   'volumes_from': self.module.params.get('volumes_from'),
                   'mem_limit':    _human_to_bytes(self.module.params.get('memory_limit')),
                   'environment':  self.module.params.get('env'),
@@ -232,12 +309,9 @@ class AnsibleDocker:
                   'privileged':   self.module.params.get('privileged'),
                   }
 
-        if self.module.params.get('ports'):
-            params['ports'] = self.module.params.get('ports').split(",")
-           
         def do_create(count, params):
             results = []
-            for i in range(count):
+            for _ in range(count):
                 result = self.client.create_container(**params)
                 self.increment_counter('created')
                 results.append(result)
@@ -254,24 +328,8 @@ class AnsibleDocker:
         return containers
 
     def start_containers(self, containers):
-        binds = None
-        if self.module.params.get('volumes'):
-            binds = {}
-            vols = self.module.params.get('volumes').split(" ")
-            for vol in vols:
-                parts = vol.split(":")
-                binds[parts[0]] = parts[1]
-
-        lxc_conf = None
-        if self.module.params.get('lxc_conf'):
-            lxc_conf = []
-            options = self.module.params.get('lxc_conf').split(" ")
-            for option in options:
-                parts = option.split(':')
-                lxc_conf.append({"Key": parts[0], "Value": parts[1]})
-
         for i in containers:
-                self.client.start(i['Id'], lxc_conf=lxc_conf, binds=binds)
+                self.client.start(i['Id'], lxc_conf=self.lxc_conf, binds=self.binds)
                 self.increment_counter('started')
 
     def stop_containers(self, containers):
@@ -323,17 +381,17 @@ def main():
     )
 
     try:
-        docker_client = AnsibleDocker(module)
+        manager = DockerManager(module)
         state = module.params.get('state')
         count = int(module.params.get('count'))
 
         if count < 1:
             module.fail_json(msg="Count must be positive number")
     
-        running_containers = docker_client.get_running_containers()
+        running_containers = manager.get_running_containers()
         running_count = len(running_containers)
         delta = count - running_count
-        deployed_containers = docker_client.get_deployed_containers()
+        deployed_containers = manager.get_deployed_containers()
         facts = None
         failed = False
         changed = False
@@ -343,45 +401,45 @@ def main():
     
             # start more containers if we don't have enough
             if delta > 0:
-                containers = docker_client.create_containers(delta)
-                docker_client.start_containers(containers)
+                containers = manager.create_containers(delta)
+                manager.start_containers(containers)
                 
             # stop containers if we have too many
             elif delta < 0:
-                docker_client.stop_containers(running_containers[0:abs(delta)])
-                docker_client.remove_containers(running_containers[0:abs(delta)])
+                manager.stop_containers(running_containers[0:abs(delta)])
+                manager.remove_containers(running_containers[0:abs(delta)])
             
-            facts = docker_client.get_running_containers()
+            facts = manager.get_running_containers()
     
         # stop and remove containers
         elif state == "absent":
-            facts = docker_client.stop_containers(deployed_containers)
-            docker_client.remove_containers(containers)
+            facts = manager.stop_containers(deployed_containers)
+            manager.remove_containers(containers)
     
         # stop containers
         elif state == "stopped":
-            facts = docker_client.stop_containers(running_containers)
+            facts = manager.stop_containers(running_containers)
     
         # kill containers
         elif state == "killed":
-            docker_client.kill_containers(running_containers)
+            manager.kill_containers(running_containers)
     
         # restart containers
         elif state == "restarted":
-            docker_client.restart_containers(running_containers)        
+            manager.restart_containers(running_containers)        
     
         msg = "%s container(s) running image %s with command %s" % \
-                (docker_client.get_summary_counters_msg(), module.params.get('image'), module.params.get('command'))
-        changed = docker_client.has_changed()
+                (manager.get_summary_counters_msg(), module.params.get('image'), module.params.get('command'))
+        changed = manager.has_changed()
     
         module.exit_json(failed=failed, changed=changed, msg=msg, ansible_facts=_ansible_facts(facts))
 
     except docker.client.APIError as e:
-        changed = docker_client.has_changed()
+        changed = manager.has_changed()
         module.exit_json(failed=True, changed=changed, msg="Docker API error: " + e.explanation)
 
     except RequestException as e:
-        changed = docker_client.has_changed()
+        changed = manager.has_changed()
         module.exit_json(failed=True, changed=changed, msg=repr(e))
         
 # this is magic, see lib/ansible/module_common.py
