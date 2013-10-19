@@ -47,7 +47,7 @@ on the host:
 ```
 
 The tomcat server's port is NAT'ed to a dynamic port on the host, but you can determine which port the server was
-mapped to using $DockerContainers:
+mapped to using docker_containers:
 
 ```
 - name: start tomcat
@@ -58,7 +58,7 @@ mapped to using $DockerContainers:
     docker: image=cove/tomcat7 command=/start-tomcat.sh ports=8080 count=5
   - name: Display IP address and port mappings for containers
     shell: echo Mapped to {{inventory_hostname}}:{{item.NetworkSettings.PortMapping.Tcp['8080']}}
-    with_items: $DockerContainers
+    with_items: docker_containers
 ```
 
 Just as in the previous example, but iterates through the list of docker containers with a sequence:
@@ -73,7 +73,7 @@ Just as in the previous example, but iterates through the list of docker contain
   - name: run tomcat servers
     docker: image=cove/tomcat7 command=/start-tomcat.sh ports=8080 count={{start_containers_count}}
   - name: Display IP address and port mappings for containers
-    shell: echo Mapped to {{inventory_hostname}}:{{DockerContainers[{{item}}].NetworkSettings.PortMapping.Tcp['8080']}}
+    shell: echo Mapped to {{inventory_hostname}}:{{docker_containers[{{item}}].NetworkSettings.PortMapping.Tcp['8080']}}
     with_sequence: start=0 end={{start_containers_count - 1}}
 ```
 
