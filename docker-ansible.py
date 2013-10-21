@@ -277,7 +277,7 @@ class DockerManager:
         deployed   = []
 
         for i in containers:
-            if i["Image"].split(":")[0] == image.split(":")[0] and (not command or i["Command"].strip() == command.strip()):
+            if i["Image"] == image and (not command or i["Command"].strip() == command.strip()):
                 details = self.client.inspect_container(i['Id'])
                 # XXX: some quirk in docker
                 if 'ID' in details:
