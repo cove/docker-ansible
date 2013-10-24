@@ -297,13 +297,15 @@ class DockerManager:
         # determine which images/commands are running already
         containers = self.client.containers()
         image      = self.module.params.get('image')
-        command    = self.module.params.get('command').strip()
+        command    = self.module.params.get('command')
+        if command:
+            command = command.strip()
         deployed   = []
 
         # if we weren't given a tag with the image, we need to only compare on the image name, as that
         # docker will give us back the full image name including a tag in the container list if one exists.
         image, tag = self.get_split_image_tag(image)
-
+        
         for i in containers:
             running_image, running_tag = self.get_split_image_tag(image)
             running_command = i['Command'].strip()
