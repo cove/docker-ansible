@@ -213,6 +213,13 @@ def _human_to_bytes(number):
 def _ansible_facts(container_list):
     return {"docker_containers": container_list}
 
+def _docker_id_quirk(inspect):
+    # XXX: some quirk in docker
+    if 'ID' in inspect:
+        inspect['Id'] = inspect['ID']
+        del inspect['ID']
+    return inspect
+
 class DockerManager:
     
     counters = {'created':0, 'started':0, 'stopped':0, 'killed':0, 'removed':0, 'restarted':0, 'pull':0}
@@ -252,6 +259,14 @@ class DockerManager:
         docker_url = urlparse(module.params.get('docker_url'))
         self.client = docker.Client(base_url=docker_url.geturl())
     
+    
+    def get_split_image_tag(self, image):
+        tag = None
+        if image.find(':') > 0:
+            return image.split(':')
+        else:
+            return image, tag 
+    
     def get_summary_counters_msg(self):
         msg = ""
         for k, v in self.counters.iteritems():
@@ -268,21 +283,34 @@ class DockerManager:
                 return True
 
         return False
+    
+    def get_inspect_containers(self, containers):
+        inspect = []
+        for i in containers:
+            details = self.client.inspect_container(i['Id'])
+            details = _docker_id_quirk(details)
+            inspect.append(details)
+
+        return inspect
 
     def get_deployed_containers(self):
         # determine which images/commands are running already
         containers = self.client.containers()
         image      = self.module.params.get('image')
-        command    = self.module.params.get('command')
+        command    = self.module.params.get('command').strip()
         deployed   = []
 
+        # if we weren't given a tag with the image, we need to only compare on the image name, as that
+        # docker will give us back the full image name including a tag in the container list if one exists.
+        image, tag = self.get_split_image_tag(image)
+
         for i in containers:
-            if i["Image"] == image and (not command or i["Command"].strip() == command.strip()):
+            running_image, running_tag = self.get_split_image_tag(image)
+            running_command = i['Command'].strip()
+
+            if running_image == image and (not tag or tag == running_tag) and (not command or running_command == command):
                 details = self.client.inspect_container(i['Id'])
-                # XXX: some quirk in docker
-                if 'ID' in details:
-                    details['Id'] = details['ID']
-                    del details['ID']
+                details = _docker_id_quirk(details)
                 deployed.append(details)
 
         return deployed
@@ -290,7 +318,7 @@ class DockerManager:
     def get_running_containers(self):
         running = []
         for i in self.get_deployed_containers():
-            if i['State']['Running'] == True:
+            if i['State']['Running'] == True and i['State']['Ghost'] == False:
                 running.append(i)
 
         return running
@@ -398,7 +426,7 @@ def main():
 
         # start/stop containers
         if state == "present":
-    
+
             # start more containers if we don't have enough
             if delta > 0:
                 containers = manager.create_containers(delta)
@@ -406,9 +434,9 @@ def main():
                 
             # stop containers if we have too many
             elif delta < 0:
-                manager.stop_containers(running_containers[0:abs(delta)])
-                manager.remove_containers(running_containers[0:abs(delta)])
-            
+                containers = manager.stop_containers(running_containers[0:abs(delta)])
+                manager.remove_containers(containers)
+
             facts = manager.get_running_containers()
     
         # stop and remove containers
@@ -426,8 +454,9 @@ def main():
     
         # restart containers
         elif state == "restarted":
-            manager.restart_containers(running_containers)        
-    
+            manager.restart_containers(running_containers)
+            facts = manager.get_inspect_containers(running_containers)
+
         msg = "%s container(s) running image %s with command %s" % \
                 (manager.get_summary_counters_msg(), module.params.get('image'), module.params.get('command'))
         changed = manager.has_changed()
