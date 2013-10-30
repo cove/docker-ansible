@@ -98,7 +98,7 @@ options:
     aliases: []
   env:
     description:
-      - Set environment variables
+      - Set environment variables (e.g. env="PASSWORD=sEcRe7,WORKERS=4")
     required: false
     default: null
     aliases: []
