@@ -255,6 +255,10 @@ class DockerManager:
         if self.module.params.get('ports'):
             self.ports = self.module.params.get('ports').split(",")
 
+        self.env = None
+        if self.module.params.get('env'):
+            self.env = dict(map(lambda x: x.split("="), self.module.params.get('env').split(",")))
+
         # connect to docker server
         docker_url = urlparse(module.params.get('docker_url'))
         self.client = docker.Client(base_url=docker_url.geturl())
@@ -332,7 +336,7 @@ class DockerManager:
                   'volumes':      self.volumes,
                   'volumes_from': self.module.params.get('volumes_from'),
                   'mem_limit':    _human_to_bytes(self.module.params.get('memory_limit')),
-                  'environment':  self.module.params.get('env'),
+                  'environment':  self.env,
                   'dns':          self.module.params.get('dns'),
                   'hostname':     self.module.params.get('hostname'),
                   'detach':       self.module.params.get('detach'),
