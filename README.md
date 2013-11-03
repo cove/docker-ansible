@@ -57,7 +57,7 @@ mapped to using docker_containers:
   - name: run tomcat servers
     docker: image=cove/tomcat7 command=/start-tomcat.sh ports=8080 count=5
   - name: Display IP address and port mappings for containers
-    shell: echo Mapped to {{inventory_hostname}}:{{item.NetworkSettings.Ports['8080/tcp'][0].HostPort}}
+    debug: msg={{inventory_hostname}}:{{item.NetworkSettings.Ports['8080/tcp'][0].HostPort}}
     with_items: docker_containers
 ```
 
@@ -73,7 +73,7 @@ Just as in the previous example, but iterates through the list of docker contain
   - name: run tomcat servers
     docker: image=cove/tomcat7 command=/start-tomcat.sh ports=8080 count={{start_containers_count}}
   - name: Display IP address and port mappings for containers
-    shell: echo Mapped to {{inventory_hostname}}:{{docker_containers[{{item}}].NetworkSettings.Ports['8080/tcp'][0].HostPort}}
+    debug: msg={{inventory_hostname}}:{{docker_containers[{{item}}].NetworkSettings.Ports['8080/tcp'][0].HostPort}}
     with_sequence: start=0 end={{start_containers_count - 1}}
 ```
 
