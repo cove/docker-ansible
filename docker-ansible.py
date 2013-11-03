@@ -156,7 +156,7 @@ mapped to using docker_containers:
   - name: run tomcat servers
     docker: image=centos command="service tomcat6 start" ports=8080 count=5
   - name: Display IP address and port mappings for containers
-    debug: msg="Mapped to {{inventory_hostname}}:{{item.NetworkSettings.PortMapping.Tcp['8080']}}"
+    debug: msg={{inventory_hostname}}:{{item.NetworkSettings.Ports['8080/tcp'][0].HostPort}}
     with_items: docker_containers
 
 Just as in the previous example, but iterates over the list of docker containers with a sequence:
@@ -169,7 +169,7 @@ Just as in the previous example, but iterates over the list of docker containers
   - name: run tomcat servers
     docker: image=centos command="service tomcat6 start" ports=8080 count={{start_containers_count}}
   - name: Display IP address and port mappings for containers
-    debug: msg="Mapped to {{inventory_hostname}}:{{docker_containers[{{item}}].NetworkSettings.PortMapping.Tcp['8080']}}"
+    debug: msg={{inventory_hostname}}:{{docker_containers[{{item}}].NetworkSettings.Ports['8080/tcp'][0].HostPort}}"
     with_sequence: start=0 end={{start_containers_count - 1}}
 
 Stop, remove all of the running tomcat containers and list the exit code from the stopped containers:
@@ -311,7 +311,7 @@ class DockerManager:
         image, tag = self.get_split_image_tag(image)
         
         for i in containers:
-            running_image, running_tag = self.get_split_image_tag(image)
+            running_image, running_tag = self.get_split_image_tag(i['Image'])
             running_command = i['Command'].strip()
 
             if running_image == image and (not tag or tag == running_tag) and (not command or running_command == command):
@@ -440,8 +440,9 @@ def main():
                 
             # stop containers if we have too many
             elif delta < 0:
-                containers = manager.stop_containers(running_containers[0:abs(delta)])
-                manager.remove_containers(containers)
+                containers_to_stop = running_containers[0:abs(delta)]
+                containers = manager.stop_containers(containers_to_stop)
+                manager.remove_containers(containers_to_stop)
 
             facts = manager.get_running_containers()
     
