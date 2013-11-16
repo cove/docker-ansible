@@ -1,8 +1,7 @@
 Ansible Module for Docker
 =========================
 
-This module allows you to use [Ansible](http://www.ansibleworks.com/) to provision and de-provision Linux containers using the
-[docker](http://docker.io) container engine.
+This module allows you to use [Ansible](http://www.ansibleworks.com/) to manage the deployment of [Docker](http://docker.io) containers.
 
 Installation
 ============
