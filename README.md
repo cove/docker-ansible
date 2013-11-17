@@ -1,3 +1,6 @@
+Note: This module is now part of Ansible core, please see https://github.com/ansible/ansible
+
+
 Ansible Module for Docker
 =========================
 
